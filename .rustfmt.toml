@@ -1,0 +1,4 @@
+hard_tabs = true
+brace_style = "AlwaysNextLine"
+imports_layout = "HorizontalVertical"
+merge_imports = true
