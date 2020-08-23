@@ -1,5 +1,6 @@
 use super::align_up;
 use super::Locked;
+use super::HEAP_TOTAL;
 use alloc::alloc::{GlobalAlloc, Layout};
 use core::mem;
 use core::ptr;
@@ -121,6 +122,7 @@ unsafe impl GlobalAlloc for Locked<LinkedListAllocator> {
 			if excess_size > 0 {
 				allocator.add_free_region(alloc_end, excess_size);
 			}
+			HEAP_TOTAL += size;
 			alloc_start as *mut u8
 		} else {
 			ptr::null_mut()
@@ -130,7 +132,7 @@ unsafe impl GlobalAlloc for Locked<LinkedListAllocator> {
 	unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
 		// perform layout adjustments
 		let (size, _) = LinkedListAllocator::size_align(layout);
-
+		HEAP_TOTAL -= size;
 		self.lock().add_free_region(ptr as usize, size)
 	}
 }

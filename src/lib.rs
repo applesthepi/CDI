@@ -18,8 +18,10 @@ pub mod memory;
 pub mod serial;
 pub mod vga_buffer;
 pub mod allocator;
+pub mod system;
 
 pub fn init() {
+	vga_buffer::init();
 	gdt::init();
 	interrupts::init_idt();
 	unsafe { interrupts::PICS.lock().initialize() };

@@ -12,6 +12,11 @@ pub mod linked_list;
 
 pub const HEAP_START: usize = 0x_4444_4444_0000;
 pub const HEAP_SIZE: usize = 100 * 1024; // 100 KiB
+pub static mut HEAP_TOTAL: usize = 0;
+
+pub fn get_memory_usage() -> f64 {
+	((unsafe { (HEAP_TOTAL as f64) / (HEAP_SIZE as f64) }) * 1000.0) as u32 as f64 / 1000.0
+}
 
 pub fn init_heap(
 	mapper: &mut impl Mapper<Size4KiB>,

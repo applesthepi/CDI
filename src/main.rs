@@ -14,6 +14,9 @@ use CDI::memory;
 use CDI::memory::translate_addr;
 use CDI::memory::BootInfoFrameAllocator;
 use CDI::println;
+use CDI::system;
+use CDI::vga_buffer::ColorCode;
+use CDI::vga_buffer::{cprintln, Color};
 
 extern crate alloc;
 
@@ -24,9 +27,15 @@ fn panic(info: &PanicInfo) -> ! {
 }
 
 fn kernel_main(boot_info: &'static BootInfo) -> ! {
-	println!("Hello World{}", "!");
+	////////////////////////////////////////
+	// PRE Initialization
+	////////////////////////////////////////
 
 	CDI::init();
+
+	////////////////////////////////////////
+	// Initialization
+	////////////////////////////////////////
 
 	let mut frame_allocator = unsafe { BootInfoFrameAllocator::init(&boot_info.memory_map) };
 
@@ -34,55 +43,23 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
 	let mut mapper = unsafe { memory::init(phys_mem_offset) };
 	let mut frame_allocator = unsafe { BootInfoFrameAllocator::init(&boot_info.memory_map) };
 
-	let addresses = [
-		// the identity-mapped vga buffer page
-		0xb8000,
-		// some code page
-		0x201008,
-		// some stack page
-		0x0100_0020_1a10,
-		boot_info.physical_memory_offset,
-	];
-
-	//let page = Page::containing_address(VirtAddr::new(0xdeadbeaf000));
-//
-	//memory::create_example_mapping(page, &mut mapper, &mut frame_allocator);
-//
-	//// write the string `New!` to the screen through the new mapping
-	//let page_ptr: *mut u64 = page.start_address().as_mut_ptr();
-	//unsafe { page_ptr.offset(400).write_volatile(0x_f021_f077_f065_f04e) };
-	//for &address in &addresses {
-	//	let virt = VirtAddr::new(address);
-	//	let phys = mapper.translate_addr(virt);
-	//}
-
 	allocator::init_heap(&mut mapper, &mut frame_allocator).expect("heap initialization failed");
 
-	// allocate a number on the heap
-	let heap_value = Box::new(41);
-	println!("heap_value at {:p}", heap_value);
+	////////////////////////////////////////
+	// POST Initialization
+	////////////////////////////////////////
 
-	// create a dynamically sized vector
-	let mut vec = Vec::new();
-	for i in 0..500 {
-		vec.push(i);
-	}
-	println!("vec at {:p}", vec.as_slice());
+	system::init();
 
-	// create a reference counted vector -> will be freed when count reaches 0
-	let reference_counted = Rc::new(vec![1, 2, 3]);
-	let cloned_reference = reference_counted.clone();
-	println!(
-		"current reference count is {}",
-		Rc::strong_count(&cloned_reference)
-	);
-	core::mem::drop(reference_counted);
-	println!(
-		"reference count is {} now",
-		Rc::strong_count(&cloned_reference)
-	);
+	////////////////////////////////////////
+	// Program
+	////////////////////////////////////////
 
-	println!("It did not crash!");
+	let heap_memory = Vec::<u8>::with_capacity(55555);
+
+	system::update(); // will happen on another thread in the future
+	unsafe { system::statistics::STATISTICS.to_vga() };
+
 	CDI::hlt_loop();
 }
 

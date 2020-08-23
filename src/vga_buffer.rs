@@ -3,9 +3,13 @@ use lazy_static::lazy_static;
 use spin::Mutex;
 use volatile::Volatile;
 
+pub fn init() {
+	//WRITER.lock().write_braket();
+}
+
 lazy_static! {
 	pub static ref WRITER: Mutex<Writer> = Mutex::new(Writer {
-		column_position: 0,
+		column_position: 2,
 		color_code: ColorCode::new(Color::LightGray, Color::Black),
 		buffer: unsafe { &mut *(0xb8000 as *mut Buffer) },
 	});
@@ -35,10 +39,10 @@ pub enum Color {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
-struct ColorCode(u8);
+pub struct ColorCode(u8);
 
 impl ColorCode {
-	fn new(foreground: Color, background: Color) -> ColorCode {
+	pub fn new(foreground: Color, background: Color) -> ColorCode {
 		ColorCode((background as u8) << 4 | (foreground as u8))
 	}
 }
@@ -86,6 +90,40 @@ impl Writer {
 		}
 	}
 
+	pub fn write_back(&mut self) {
+		if self.column_position > 2 {
+			self.column_position -= 1;
+
+			let row = BUFFER_HEIGHT - 1;
+			let col = self.column_position;
+
+			self.buffer.chars[row][col].write(ScreenChar {
+				ascii_character: b' ',
+				color_code: self.color_code,
+			});
+		}
+	}
+
+	pub fn write_clear(&mut self) {
+		self.column_position = 2;
+
+		let row = BUFFER_HEIGHT - 1;
+
+		for i in 2..BUFFER_WIDTH {
+			self.buffer.chars[row][i].write(ScreenChar {
+				ascii_character: b' ',
+				color_code: self.color_code,
+			});
+		}
+	}
+
+	pub fn write_braket(&mut self) {
+		self.buffer.chars[BUFFER_HEIGHT - 1][0].write(ScreenChar {
+			ascii_character: b'>',
+			color_code: ColorCode::new(Color::Yellow, Color::Black),
+		});
+	}
+
 	fn write_string(&mut self, s: &str) {
 		for byte in s.bytes() {
 			match byte {
@@ -105,7 +143,7 @@ impl Writer {
 			}
 		}
 		self.clear_row(BUFFER_HEIGHT - 1);
-		self.column_position = 0;
+		self.column_position = 2;
 	}
 
 	fn clear_row(&mut self, row: usize) {
@@ -113,7 +151,7 @@ impl Writer {
 			ascii_character: b' ',
 			color_code: self.color_code,
 		};
-		for col in 0..BUFFER_WIDTH {
+		for col in 2..BUFFER_WIDTH {
 			self.buffer.chars[row][col].write(blank);
 		}
 	}
@@ -126,23 +164,33 @@ impl fmt::Write for Writer {
 	}
 }
 
+pub fn cprintln(color: ColorCode, args: fmt::Arguments) {
+	_print(color, format_args!("{}\n", args));
+}
+
+pub fn cprint(color: ColorCode, args: fmt::Arguments) {
+	_print(color, args);
+}
+
 #[macro_export]
 macro_rules! print {
-    ($($arg:tt)*) => ($crate::vga_buffer::_print(format_args!($($arg)*)));
+    ($($arg:tt)*) => ($crate::vga_buffer::_print(ColorCode::new(Color::LightGray, Color::Black), format_args!($($arg)*)));
 }
 
 #[macro_export]
 macro_rules! println {
     () => ($crate::print!("\n"));
-    ($($arg:tt)*) => ($crate::print!("{}\n", format_args!($($arg)*)));
+    ($($arg:tt)*) => ($crate::vga_buffer::_print(ColorCode::new(Color::LightGray, Color::Black), format_args!("{}\n", format_args!($($arg)*))));
 }
 
 #[doc(hidden)]
-pub fn _print(args: fmt::Arguments) {
+pub fn _print(color: ColorCode, args: fmt::Arguments) {
 	use core::fmt::Write;
 	use x86_64::instructions::interrupts;
 
 	interrupts::without_interrupts(|| {
-		WRITER.lock().write_fmt(args).unwrap();
+		let mut lk = WRITER.lock();
+		lk.color_code = color;
+		lk.write_fmt(args).unwrap();
 	});
 }

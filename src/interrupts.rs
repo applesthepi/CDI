@@ -1,10 +1,12 @@
 use crate::gdt;
 use crate::hlt_loop;
 use crate::print;
-use crate::println;
+use crate::{
+	println,
+	vga_buffer::{cprintln, Color, ColorCode},
+};
 use lazy_static::lazy_static;
 use pic8259_simple::ChainedPics;
-use spin;
 use x86_64::structures::idt::PageFaultErrorCode;
 use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame};
 
@@ -29,7 +31,10 @@ pub fn init_idt() {
 }
 
 extern "x86-interrupt" fn breakpoint_handler(stack_frame: &mut InterruptStackFrame) {
-	println!("EXCEPTION: BREAKPOINT\n{:#?}", stack_frame);
+	cprintln(
+		ColorCode::new(Color::Black, Color::White),
+		format_args!("EXCEPTION: BREAKPOINT\n{:#?}", stack_frame),
+	);
 }
 
 extern "x86-interrupt" fn double_fault_handler(
@@ -40,8 +45,6 @@ extern "x86-interrupt" fn double_fault_handler(
 }
 
 extern "x86-interrupt" fn timer_interrupt_handler(_stack_frame: &mut InterruptStackFrame) {
-	print!(".");
-
 	unsafe {
 		PICS.lock()
 			.notify_end_of_interrupt(InterruptIndex::Timer.as_u8());
@@ -66,8 +69,21 @@ extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: &mut Interrup
 	if let Ok(Some(key_event)) = keyboard.add_byte(scancode) {
 		if let Some(key) = keyboard.process_keyevent(key_event) {
 			match key {
-				DecodedKey::Unicode(character) => print!("{}", character),
-				DecodedKey::RawKey(key) => print!("{:?}", key),
+				DecodedKey::Unicode(character) => {
+					if character == 8 as char {
+						crate::vga_buffer::WRITER.lock().write_back();
+					} else if character == 27 as char {
+						crate::vga_buffer::WRITER.lock().write_clear();
+					} else if character == 10 as char {
+						println!();
+						//crate::vga_buffer::WRITER.lock().write_braket();
+					} else {
+						print!("{}", character);
+					}
+				},
+				DecodedKey::RawKey(key) => {
+					print!("{:?}", key)
+				},
 			}
 		}
 	}
@@ -79,16 +95,16 @@ extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: &mut Interrup
 }
 
 extern "x86-interrupt" fn page_fault_handler(
-    stack_frame: &mut InterruptStackFrame,
-    error_code: PageFaultErrorCode,
+	stack_frame: &mut InterruptStackFrame,
+	error_code: PageFaultErrorCode,
 ) {
-    use x86_64::registers::control::Cr2;
+	use x86_64::registers::control::Cr2;
 
-    println!("EXCEPTION: PAGE FAULT");
-    println!("Accessed Address: {:?}", Cr2::read());
-    println!("Error Code: {:?}", error_code);
-    println!("{:#?}", stack_frame);
-    hlt_loop();
+	println!("EXCEPTION: PAGE FAULT");
+	println!("Accessed Address: {:?}", Cr2::read());
+	println!("Error Code: {:?}", error_code);
+	println!("{:#?}", stack_frame);
+	hlt_loop();
 }
 
 #[derive(Debug, Clone, Copy)]
